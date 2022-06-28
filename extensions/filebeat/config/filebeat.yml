@@ -7,20 +7,35 @@ filebeat.config:
     path: ${path.config}/modules.d/*.yml
     reload.enabled: false
 
-filebeat.autodiscover:
-  providers:
-    # The Docker autodiscover provider automatically retrieves logs from Docker
-    # containers as they start and stop.
-    - type: docker
-      hints.enabled: true
+# filebeat.autodiscover:
+#   providers:
+#     # The Docker autodiscover provider automatically retrieves logs from Docker
+#     # containers as they start and stop.
+#     - type: docker
+#       hints.enabled: true
 
-processors:
-  - add_cloud_metadata: ~
+# processors:
+#   - decode_json_fields:
+#       fields: ["message"]
+#       max_depth: 2
+#       process_array: true
 
-output.elasticsearch:
-  hosts: ['http://elasticsearch:9200']
-  username: elastic
-  password: ${ELASTIC_PASSWORD}
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /api-gateway/logs/*.log
+
+# output.elasticsearch:
+#   hosts: ['http://elasticsearch:9200']
+#   username: elastic
+#   password: ${ELASTIC_PASSWORD}
+
+output.logstash:
+  hosts: ["logstash:5044"]
+
+# output.console:
+#   pretty: true
 
 ## HTTP endpoint for health checking
 ## https://www.elastic.co/guide/en/beats/filebeat/current/http-endpoint.html
@@ -28,3 +43,31 @@ output.elasticsearch:
 
 http.enabled: true
 http.host: 0.0.0.0
+
+logging.metrics.enabled: false
+
+
+# filebeat.config:
+#   modules:
+#     path: ${path.config}/modules.d/*.yml
+#     reload.enabled: false
+
+# filebeat.autodiscover:
+#   providers:
+#     - type: docker
+#       hints.enabled: true
+
+# processors:
+  # - add_docker_metadata:
+      # host: "unix:///var/run/docker.sock"
+
+# filebeat.inputs:
+#   - type: log
+#     enabled: true
+#     paths:
+#       - cerberus-api-gateway-logs:/api-gateway/logs/*.log
+
+# output.elasticsearch:
+#   hosts: '${ELASTICSEARCH_HOSTS:elasticsearch:9200}'
+#   username: '${ELASTICSEARCH_USERNAME:}'
+#   password: '${ELASTICSEARCH_PASSWORD:}'

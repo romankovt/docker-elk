@@ -1,4 +1,4 @@
-version: '3.7'
+version: '3.9'
 
 services:
 
@@ -57,14 +57,15 @@ services:
       - ./logstash/pipeline:/usr/share/logstash/pipeline:ro,Z
     ports:
       - "5044:5044"
-      - "5000:5000/tcp"
-      - "5000:5000/udp"
+      - "5001:5001/tcp"
+      - "5001:5001/udp"
       - "9600:9600"
     environment:
       LS_JAVA_OPTS: -Xms256m -Xmx256m
       LOGSTASH_INTERNAL_PASSWORD: ${LOGSTASH_INTERNAL_PASSWORD:-}
     networks:
       - elk
+      - food-tech-test_food-tech
     depends_on:
       - elasticsearch
 
@@ -81,13 +82,102 @@ services:
       KIBANA_SYSTEM_PASSWORD: ${KIBANA_SYSTEM_PASSWORD:-}
     networks:
       - elk
+      - food-tech-test_food-tech
     depends_on:
       - elasticsearch
 
+  filebeat:
+    build:
+      context: extensions/filebeat/
+      args:
+        ELASTIC_VERSION: ${ELASTIC_VERSION}
+    # Run as 'root' instead of 'filebeat' (uid 1000) to allow reading
+    # 'docker.sock' and the host's filesystem.
+    user: root
+    command:
+      # Log to stderr.
+      - -e
+      # Disable config file permissions checks. Allows mounting
+      # 'config/filebeat.yml' even if it's not owned by root.
+      # see: https://www.elastic.co/guide/en/beats/libbeat/current/config-file-permissions.html
+      - --strict.perms=false
+    volumes:
+      - ./extensions/filebeat/config/filebeat.yml:/usr/share/filebeat/filebeat.yml:ro,Z
+      - type: bind
+        source: /var/lib/docker/containers
+        target: /var/lib/docker/containers
+        read_only: true
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+      - food-tech-test_cerberus-api-gateway-logs:/api-gateway/logs
+      - food-tech-test_tardis-postgres-logs:/tardis-postgres/logs
+    environment:
+      ELASTIC_PASSWORD: ${ELASTIC_PASSWORD:-}
+    networks:
+      - elk
+      - food-tech-test_food-tech
+    depends_on:
+      - elasticsearch
+
+  elastic-agent-server:
+    image: docker.elastic.co/beats/elastic-agent:${ELASTIC_VERSION}
+    restart: always
+    user: root # note, synthetic browser monitors require this set to `elastic-agent`
+    environment:
+      - FLEET_SERVER_ENABLE=true
+      - FLEET_SERVER_INSECURE_HTTP=true
+      - FLEET_SERVER_ELASTICSEARCH_HOST=http://elasticsearch:9200
+      - FLEET_SERVER_SERVICE_TOKEN=${SERVER_FLEET_SERVER_SERVICE_TOKEN}
+      - FLEET_SERVER_POLICY_ID=fleet-server-policy
+      - FLEET_ENROLL=1
+      - FLEET_ENROLLMENT_TOKEN=${SERVER_FLEET_ENROLLMENT_TOKEN}
+    ports:
+      - "8220:8220"
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+    depends_on:
+      - elasticsearch
+      - kibana
+    networks:
+      - elk
+      - food-tech-test_food-tech
+
+  elastic-agent:
+    image: docker.elastic.co/beats/elastic-agent:${ELASTIC_VERSION}
+    restart: always
+    user: root # note, synthetic browser monitors require this set to `elastic-agent`
+    environment:
+      - FLEET_ENROLLMENT_TOKEN=${AGENT_FLEET_ENROLLMENT_TOKEN}
+      - FLEET_ENROLL=1
+      - FLEET_URL=http://elastic-agent-server:8220
+      - FLEET_INSECURE=true
+    volumes:
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
+      - food-tech-test_tardis-postgres-logs:/tardis-postgres/logs
+    depends_on:
+      - elastic-agent-server
+    networks:
+      - elk
+      - food-tech-test_food-tech
+
 networks:
   elk:
-    driver: bridge
+  food-tech-test_food-tech:
+    external: true
 
 volumes:
   setup:
   elasticsearch:
+  filebeat:
+  food-tech-test_cerberus-api-gateway-logs:
+    external: true
+  food-tech-test_tardis-postgres-logs:
+    external: true
